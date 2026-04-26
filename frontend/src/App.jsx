@@ -655,82 +655,12 @@ export default function NiftyAnalyzer() {
               </div>
 
               {/* Option Chain Table */}
-              {optionChain.data.length === 0 ? (
-                <div className="card" style={{ textAlign:"center", padding:60 }}>
-                  <div style={{ fontSize:40, marginBottom:12 }}>📊</div>
-                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:16, marginBottom:8 }}>No Option Chain Data Yet</div>
-                  <div style={{ fontFamily:"JetBrains Mono", fontSize:12, color:T.muted, marginBottom:20 }}>
-                    Option chain is fetched from NSE during market hours (9:15 AM – 3:30 PM)
-                  </div>
-                  <button onClick={async () => {
-                    setOcLoading(true);
-                    await fetch(`${API}/optionchain/refresh`, { method:"POST" });
-                    await fetchAllData();
-                    setOcLoading(false);
-                  }} style={{ background:T.accent, color:"#000", border:"none", borderRadius:8, padding:"10px 24px", fontFamily:"Syne", fontWeight:700, fontSize:13, cursor:"pointer" }}>
-                    {ocLoading ? "Fetching..." : "🔄 Fetch Now"}
-                  </button>
-                </div>
-              ) : (
-                <div className="card" style={{ padding:0, overflow:"hidden" }}>
-                  <div style={{ overflowX:"auto" }}>
-                    <table style={{ width:"100%", borderCollapse:"collapse", fontFamily:"JetBrains Mono", fontSize:12 }}>
-                      <thead>
-                        <tr style={{ background:T.surface }}>
-                          {/* CE Headers */}
-                          {["OI","Chng OI","Volume","IV","LTP"].map(h => (
-                            <th key={h} style={{ padding:"12px 10px", color:T.up, fontWeight:600, textAlign:"right", borderBottom:`1px solid ${T.border}`, whiteSpace:"nowrap", fontSize:11 }}>{h}</th>
-                          ))}
-                          {/* Strike */}
-                          <th style={{ padding:"12px 16px", color:T.warn, fontWeight:700, textAlign:"center", borderBottom:`1px solid ${T.border}`, background:T.card, fontSize:12, letterSpacing:1 }}>STRIKE</th>
-                          {/* PE Headers */}
-                          {["LTP","IV","Volume","Chng OI","OI"].map(h => (
-                            <th key={h} style={{ padding:"12px 10px", color:T.down, fontWeight:600, textAlign:"left", borderBottom:`1px solid ${T.border}`, whiteSpace:"nowrap", fontSize:11 }}>{h}</th>
-                          ))}
-                        </tr>
-                        <tr style={{ background:T.surface }}>
-                          <td colSpan={5} style={{ padding:"6px 10px", textAlign:"center", color:T.up, fontFamily:"Syne", fontWeight:700, fontSize:11, letterSpacing:2, borderBottom:`2px solid ${T.up}44` }}>── CALL OPTIONS (CE) ──</td>
-                          <td style={{ background:T.card, borderBottom:`2px solid ${T.warn}44` }}/>
-                          <td colSpan={5} style={{ padding:"6px 10px", textAlign:"center", color:T.down, fontFamily:"Syne", fontWeight:700, fontSize:11, letterSpacing:2, borderBottom:`2px solid ${T.down}44` }}>── PUT OPTIONS (PE) ──</td>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {optionChain.data.map((row, i) => {
-                          const isAtm = row.atm === 1;
-                          const isMaxPain = row.strike === optionChain.max_pain;
-                          const rowBg = isAtm ? T.warn + "18" : isMaxPain ? T.accent2 + "12" : i % 2 === 0 ? T.card : T.surface;
-                          const fmt = (v) => v ? Number(v).toLocaleString("en-IN") : "—";
-                          const fmtOi = (v) => v >= 1e7 ? (v/1e7).toFixed(2)+"Cr" : v >= 1e5 ? (v/1e5).toFixed(1)+"L" : fmt(v);
-                          return (
-                            <tr key={i} style={{ background:rowBg, transition:"background 0.2s" }}>
-                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.up, opacity:0.9 }}>{fmtOi(row.ce_oi)}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"right", color: row.ce_chng_oi > 0 ? T.up : T.down }}>{fmtOi(row.ce_chng_oi)}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.muted }}>{fmtOi(row.ce_volume)}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.muted }}>{row.ce_iv ? row.ce_iv.toFixed(1)+"%" : "—"}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.up, fontWeight:600 }}>{fmt(row.ce_ltp)}</td>
-                              {/* Strike cell */}
-                              <td style={{ padding:"9px 16px", textAlign:"center", fontWeight:700, color: isAtm ? T.warn : T.text, background: isAtm ? T.warn+"22" : isMaxPain ? T.accent2+"22" : T.surface, borderLeft:`1px solid ${T.border}`, borderRight:`1px solid ${T.border}`, whiteSpace:"nowrap" }}>
-                                {row.strike.toLocaleString("en-IN")}
-                                {isAtm && <span style={{ display:"block", fontSize:9, color:T.warn, letterSpacing:1 }}>ATM</span>}
-                                {isMaxPain && <span style={{ display:"block", fontSize:9, color:T.accent2, letterSpacing:1 }}>MAX PAIN</span>}
-                              </td>
-                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.down, fontWeight:600 }}>{fmt(row.pe_ltp)}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.muted }}>{row.pe_iv ? row.pe_iv.toFixed(1)+"%" : "—"}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.muted }}>{fmtOi(row.pe_volume)}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"left", color: row.pe_chng_oi > 0 ? T.up : T.down }}>{fmtOi(row.pe_chng_oi)}</td>
-                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.down, opacity:0.9 }}>{fmtOi(row.pe_oi)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
           )}
 
+        </div>
 
+        {/* Footer */}
         <div style={{ borderTop:`1px solid ${T.border}`, padding:"16px 24px", textAlign:"center", marginTop:24 }}>
           <span style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted }}>
             NIFTY ANALYZER • Data refreshes every 5 min during market hours (09:15 – 15:30 IST) • {new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}
