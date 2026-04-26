@@ -4,53 +4,8 @@ import {
   ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend
 } from "recharts";
 
-// ── MOCK DATA (replace with real API calls when backend is running) ──────────
-const MOCK_MARKET = Array.from({ length: 75 }, (_, i) => {
-  const base = 22400 + Math.sin(i / 8) * 120 + Math.random() * 60 - 30;
-  const open = base;
-  const close = base + Math.random() * 40 - 20;
-  const high = Math.max(open, close) + Math.random() * 20;
-  const low = Math.min(open, close) - Math.random() * 20;
-  const hour = 9 + Math.floor(i * 6 / 75);
-  const min = (i * 6) % 60;
-  return {
-    timestamp: `${String(hour).padStart(2,"0")}:${String(min).padStart(2,"0")}`,
-    open: +open.toFixed(2), close: +close.toFixed(2),
-    high: +high.toFixed(2), low: +low.toFixed(2),
-    volume: Math.floor(Math.random() * 5000000 + 1000000),
-  };
-});
-
-const MOCK_NEWS = [
-  { id:1, title:"RBI holds repo rate at 6.5%, signals cautious stance on inflation", source:"Economic Times", sentiment:"neutral", published_at:"2024-01-15T09:30:00Z", keywords:"RBI, rate, inflation" },
-  { id:2, title:"Nifty surges 250 points as FII buying returns to D-Street", source:"Moneycontrol", sentiment:"positive", published_at:"2024-01-15T10:15:00Z", keywords:"FII" },
-  { id:3, title:"IT stocks drag Sensex lower amid weak US tech earnings", source:"LiveMint", sentiment:"negative", published_at:"2024-01-15T11:00:00Z", keywords:"earnings" },
-  { id:4, title:"Rupee strengthens against dollar on strong capital inflows", source:"Business Standard", sentiment:"positive", published_at:"2024-01-15T11:45:00Z", keywords:"rupee, dollar" },
-  { id:5, title:"Global recession fears mount as oil prices spike to $95/barrel", source:"Reuters", sentiment:"negative", published_at:"2024-01-15T12:30:00Z", keywords:"recession, oil" },
-  { id:6, title:"Mid-cap and small-cap indices outperform benchmark Nifty 50", source:"NDTV Profit", sentiment:"positive", published_at:"2024-01-15T13:10:00Z", keywords:"" },
-];
-
-const MOCK_PATTERNS = [
-  { pattern_name:"Golden Cross", strength:"Strong", description:"Short-term MA crossed above long-term MA — bullish signal", detected_at:"10:30" },
-  { pattern_name:"Overbought (RSI)", strength:"Moderate", description:"RSI at 72.4 — market may correct soon", detected_at:"11:45" },
-  { pattern_name:"Uptrend", strength:"Strong", description:"Market trending up 1.8% today", detected_at:"13:00" },
-];
-
-const MOCK_EVENTS = [
-  { event_type:"dip", event_time:"10:05", price_before:22450, price_after:22380, change_pct:-0.31, linked_news:["IT stocks drag Sensex lower"] },
-  { event_type:"spike", event_time:"11:20", price_before:22390, price_after:22510, change_pct:0.54, linked_news:["Nifty surges 250 points as FII buying returns"] },
-  { event_type:"dip", event_time:"12:35", price_before:22480, price_after:22390, change_pct:-0.40, linked_news:["Global recession fears mount as oil prices spike"] },
-];
-
-const MOCK_SUMMARY = {
-  open_price: 22380, close_price: 22614, day_high: 22680, day_low: 22310,
-  total_change_pct: 1.05, volatility: 0.18, trend: "Bullish",
-  safety_score: 72, safety_label: "Safe",
-  prediction: "Today's market showed strong upward momentum. Golden Cross pattern indicates potential uptrend continuation. Monitor FII activity for tomorrow's direction.",
-  top_news: JSON.stringify(["RBI holds repo rate","Nifty surges 250 points","IT stocks drag Sensex"]),
-  patterns_found: JSON.stringify(["Golden Cross","Uptrend","Overbought (RSI)"]),
-  date: new Date().toISOString().split("T")[0]
-};
+// ── API BASE URL ─────────────────────────────────────────────────────────────
+const API = "https://nifty-analyzer.onrender.com/api";
 
 // ── STYLES ──────────────────────────────────────────────────────────────────
 const FONTS = `
@@ -141,15 +96,64 @@ const CustomTooltip = ({ active, payload, label, theme }) => {
 export default function NiftyAnalyzer() {
   const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
-  const [marketData] = useState(MOCK_MARKET);
-  const [news] = useState(MOCK_NEWS);
-  const [patterns] = useState(MOCK_PATTERNS);
-  const [events] = useState(MOCK_EVENTS);
-  const [summary] = useState(MOCK_SUMMARY);
+  const [marketData, setMarketData] = useState([]);
+  const [news, setNews] = useState([]);
+  const [patterns, setPatterns] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [summary, setSummary] = useState({ open_price:0, close_price:0, day_high:0, day_low:0, total_change_pct:0, volatility:0, trend:"Loading...", safety_score:0, safety_label:"Loading", prediction:"Fetching data...", top_news:"[]", patterns_found:"[]", date:"" });
   const [liveTime, setLiveTime] = useState(new Date());
   const [pulseOn, setPulseOn] = useState(true);
+  const [optionChain, setOptionChain] = useState({ data:[], pcr:0, max_pain:0, atm:0, expiry:"", fetched_at:"" });
+  const [ocLoading, setOcLoading] = useState(false);
 
   const T = darkMode ? DARK : LIGHT;
+
+  // Fetch real data from backend
+  const fetchAllData = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const [marketRes, newsRes, patternsRes, eventsRes, summaryRes, ocRes] = await Promise.all([
+        fetch(`${API}/market?date=${today}`),
+        fetch(`${API}/news`),
+        fetch(`${API}/patterns?date=${today}`),
+        fetch(`${API}/events?date=${today}`),
+        fetch(`${API}/summary/today`),
+        fetch(`${API}/optionchain`),
+      ]);
+      const [marketJson, newsJson, patternsJson, eventsJson, summaryJson, ocJson] = await Promise.all([
+        marketRes.json(), newsRes.json(), patternsRes.json(), eventsRes.json(), summaryRes.json(), ocRes.json()
+      ]);
+
+      // Format market data timestamps
+      const formattedMarket = marketJson.map(d => ({
+        ...d,
+        timestamp: d.timestamp ? d.timestamp.slice(11, 16) : "",
+      }));
+
+      // Parse linked_news strings in events
+      const formattedEvents = eventsJson.map(e => ({
+        ...e,
+        linked_news: typeof e.linked_news === "string" ? JSON.parse(e.linked_news || "[]") : e.linked_news || []
+      }));
+
+      setMarketData(formattedMarket);
+      setNews(newsJson);
+      setPatterns(patternsJson);
+      setEvents(formattedEvents);
+      if (summaryJson && !summaryJson.message) setSummary(summaryJson);
+      if (ocJson && ocJson.data) setOptionChain(ocJson);
+      setLoading(false);
+    } catch (err) {
+      console.error("API fetch error:", err);
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllData();
+    const interval = setInterval(fetchAllData, 60000); // refresh every 60s
+    return () => clearInterval(interval);
+  }, [fetchAllData]);
 
   useEffect(() => {
     const t = setInterval(() => setLiveTime(new Date()), 1000);
@@ -167,6 +171,7 @@ export default function NiftyAnalyzer() {
     { id:"news", label:"News & Events" },
     { id:"patterns", label:"Patterns" },
     { id:"prediction", label:"Prediction" },
+    { id:"optionchain", label:"Option Chain" },
   ];
 
   return (
@@ -597,9 +602,135 @@ export default function NiftyAnalyzer() {
             </div>
           )}
 
-        </div>
+          {/* ── OPTION CHAIN TAB ── */}
+          {activeTab === "optionchain" && (
+            <div className="fade-up" style={{ display:"grid", gap:20 }}>
 
-        {/* Footer */}
+              {/* Top info bar */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:12 }}>
+                <div className="card" style={{ textAlign:"center" }}>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>Expiry</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:15, color:T.accent }}>{optionChain.expiry || "—"}</div>
+                </div>
+                <div className="card" style={{ textAlign:"center" }}>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>ATM Strike</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:15, color:T.warn }}>₹{optionChain.atm?.toLocaleString("en-IN") || "—"}</div>
+                </div>
+                <div className="card" style={{ textAlign:"center" }}>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>PCR Ratio</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:15, color: optionChain.pcr > 1 ? T.up : T.down }}>
+                    {optionChain.pcr || "—"}
+                    <span style={{ fontFamily:"JetBrains Mono", fontSize:11, marginLeft:6, color:T.muted }}>
+                      {optionChain.pcr > 1.2 ? "Bullish" : optionChain.pcr < 0.8 ? "Bearish" : "Neutral"}
+                    </span>
+                  </div>
+                </div>
+                <div className="card" style={{ textAlign:"center" }}>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>Max Pain</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:15, color:T.accent2 }}>₹{optionChain.max_pain?.toLocaleString("en-IN") || "—"}</div>
+                </div>
+                <div className="card" style={{ textAlign:"center" }}>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>Last Updated</div>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:12, color:T.text }}>
+                    {optionChain.fetched_at ? new Date(optionChain.fetched_at).toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" }) : "—"}
+                  </div>
+                </div>
+                <div className="card" style={{ textAlign:"center", cursor:"pointer", border:`1px solid ${T.accent}44` }}
+                  onClick={async () => {
+                    setOcLoading(true);
+                    await fetch(`${API}/optionchain/refresh`, { method:"POST" });
+                    await fetchAllData();
+                    setOcLoading(false);
+                  }}>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, textTransform:"uppercase", letterSpacing:1 }}>Refresh</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:15, color:T.accent }}>{ocLoading ? "..." : "🔄 Now"}</div>
+                </div>
+              </div>
+
+              {/* PCR Explanation */}
+              <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:12, padding:"12px 20px", fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, lineHeight:1.8 }}>
+                📌 <span style={{ color:T.text }}>PCR &gt; 1.2</span> = More PUT writing = Bullish &nbsp;|&nbsp;
+                <span style={{ color:T.text }}>PCR &lt; 0.8</span> = More CALL writing = Bearish &nbsp;|&nbsp;
+                <span style={{ color:T.text }}>Max Pain</span> = Strike where most option sellers profit at expiry
+              </div>
+
+              {/* Option Chain Table */}
+              {optionChain.data.length === 0 ? (
+                <div className="card" style={{ textAlign:"center", padding:60 }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>📊</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:16, marginBottom:8 }}>No Option Chain Data Yet</div>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:12, color:T.muted, marginBottom:20 }}>
+                    Option chain is fetched from NSE during market hours (9:15 AM – 3:30 PM)
+                  </div>
+                  <button onClick={async () => {
+                    setOcLoading(true);
+                    await fetch(`${API}/optionchain/refresh`, { method:"POST" });
+                    await fetchAllData();
+                    setOcLoading(false);
+                  }} style={{ background:T.accent, color:"#000", border:"none", borderRadius:8, padding:"10px 24px", fontFamily:"Syne", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    {ocLoading ? "Fetching..." : "🔄 Fetch Now"}
+                  </button>
+                </div>
+              ) : (
+                <div className="card" style={{ padding:0, overflow:"hidden" }}>
+                  <div style={{ overflowX:"auto" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontFamily:"JetBrains Mono", fontSize:12 }}>
+                      <thead>
+                        <tr style={{ background:T.surface }}>
+                          {/* CE Headers */}
+                          {["OI","Chng OI","Volume","IV","LTP"].map(h => (
+                            <th key={h} style={{ padding:"12px 10px", color:T.up, fontWeight:600, textAlign:"right", borderBottom:`1px solid ${T.border}`, whiteSpace:"nowrap", fontSize:11 }}>{h}</th>
+                          ))}
+                          {/* Strike */}
+                          <th style={{ padding:"12px 16px", color:T.warn, fontWeight:700, textAlign:"center", borderBottom:`1px solid ${T.border}`, background:T.card, fontSize:12, letterSpacing:1 }}>STRIKE</th>
+                          {/* PE Headers */}
+                          {["LTP","IV","Volume","Chng OI","OI"].map(h => (
+                            <th key={h} style={{ padding:"12px 10px", color:T.down, fontWeight:600, textAlign:"left", borderBottom:`1px solid ${T.border}`, whiteSpace:"nowrap", fontSize:11 }}>{h}</th>
+                          ))}
+                        </tr>
+                        <tr style={{ background:T.surface }}>
+                          <td colSpan={5} style={{ padding:"6px 10px", textAlign:"center", color:T.up, fontFamily:"Syne", fontWeight:700, fontSize:11, letterSpacing:2, borderBottom:`2px solid ${T.up}44` }}>── CALL OPTIONS (CE) ──</td>
+                          <td style={{ background:T.card, borderBottom:`2px solid ${T.warn}44` }}/>
+                          <td colSpan={5} style={{ padding:"6px 10px", textAlign:"center", color:T.down, fontFamily:"Syne", fontWeight:700, fontSize:11, letterSpacing:2, borderBottom:`2px solid ${T.down}44` }}>── PUT OPTIONS (PE) ──</td>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {optionChain.data.map((row, i) => {
+                          const isAtm = row.atm === 1;
+                          const isMaxPain = row.strike === optionChain.max_pain;
+                          const rowBg = isAtm ? T.warn + "18" : isMaxPain ? T.accent2 + "12" : i % 2 === 0 ? T.card : T.surface;
+                          const fmt = (v) => v ? Number(v).toLocaleString("en-IN") : "—";
+                          const fmtOi = (v) => v >= 1e7 ? (v/1e7).toFixed(2)+"Cr" : v >= 1e5 ? (v/1e5).toFixed(1)+"L" : fmt(v);
+                          return (
+                            <tr key={i} style={{ background:rowBg, transition:"background 0.2s" }}>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.up, opacity:0.9 }}>{fmtOi(row.ce_oi)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color: row.ce_chng_oi > 0 ? T.up : T.down }}>{fmtOi(row.ce_chng_oi)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.muted }}>{fmtOi(row.ce_volume)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.muted }}>{row.ce_iv ? row.ce_iv.toFixed(1)+"%" : "—"}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.up, fontWeight:600 }}>{fmt(row.ce_ltp)}</td>
+                              {/* Strike cell */}
+                              <td style={{ padding:"9px 16px", textAlign:"center", fontWeight:700, color: isAtm ? T.warn : T.text, background: isAtm ? T.warn+"22" : isMaxPain ? T.accent2+"22" : T.surface, borderLeft:`1px solid ${T.border}`, borderRight:`1px solid ${T.border}`, whiteSpace:"nowrap" }}>
+                                {row.strike.toLocaleString("en-IN")}
+                                {isAtm && <span style={{ display:"block", fontSize:9, color:T.warn, letterSpacing:1 }}>ATM</span>}
+                                {isMaxPain && <span style={{ display:"block", fontSize:9, color:T.accent2, letterSpacing:1 }}>MAX PAIN</span>}
+                              </td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.down, fontWeight:600 }}>{fmt(row.pe_ltp)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.muted }}>{row.pe_iv ? row.pe_iv.toFixed(1)+"%" : "—"}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.muted }}>{fmtOi(row.pe_volume)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color: row.pe_chng_oi > 0 ? T.up : T.down }}>{fmtOi(row.pe_chng_oi)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.down, opacity:0.9 }}>{fmtOi(row.pe_oi)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+
         <div style={{ borderTop:`1px solid ${T.border}`, padding:"16px 24px", textAlign:"center", marginTop:24 }}>
           <span style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted }}>
             NIFTY ANALYZER • Data refreshes every 5 min during market hours (09:15 – 15:30 IST) • {new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}
