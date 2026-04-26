@@ -11,21 +11,22 @@ import threading
 import schedule
 import time
 import os
+import pytz
 
 app = Flask(__name__)
 CORS(app)
 
-# configuration
+# ─── CONFIG ───────────────────────────────────────────────
 NEWS_API_KEY =  os.environ.get("NEWS_API_KEY","d72ac2c15a48499db495479811989120")
 DB_PATH = "nifty_data.db"
 NIFTY_SYMBOL = "^NSEI"
 
-# database set up
+# ─── DATABASE SETUP ───────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    # Market candle data 
+    # Market candle data (OHLCV per minute)
     c.execute('''CREATE TABLE IF NOT EXISTS market_data (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,
@@ -38,7 +39,7 @@ def init_db():
         UNIQUE(timestamp)
     )''')
 
-    # News 
+    # News articles
     c.execute('''CREATE TABLE IF NOT EXISTS news (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         published_at TEXT NOT NULL,
@@ -51,7 +52,7 @@ def init_db():
         UNIQUE(url)
     )''')
 
-    # pattern detecter
+    # Detected patterns
     c.execute('''CREATE TABLE IF NOT EXISTS patterns (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL,
@@ -111,13 +112,13 @@ def init_db():
 
 # ─── FETCH MARKET DATA ────────────────────────────────────
 def fetch_market_data():
-    print(f" Fetching Nifty data at {datetime.now().strftime('%H:%M:%S')}")
+    print(f"📈 Fetching Nifty data at {datetime.now().strftime('%H:%M:%S')}")
     try:
         ticker = yf.Ticker(NIFTY_SYMBOL)
         df = ticker.history(period="1d", interval="5m")
 
         if df.empty:
-            print("No data returned from yfinance")
+            print("⚠️ No data returned from yfinance")
             return None
 
         df.reset_index(inplace=True)
@@ -135,21 +136,20 @@ def fetch_market_data():
                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
                     (ts, today, row['Open'], row['High'], row['Low'], row['Close'], row['Volume']))
             except Exception as e:
-                print(f" Error saving market data: {e}")
                 pass
 
         conn.commit()
         conn.close()
-        print(f" Saved {len(df)} market candles")
+        print(f"✅ Saved {len(df)} market candles")
         return df
 
     except Exception as e:
-        print(f" Market fetch error: {e}")
+        print(f"❌ Market fetch error: {e}")
         return None
 
-# news fetcher
+# ─── FETCH NEWS ───────────────────────────────────────────
 def fetch_news():
-    print(" Fetching financial news...")
+    print("📰 Fetching financial news...")
     try:
         keywords = "Nifty OR Sensex OR RBI OR Indian stock market OR NSE OR BSE"
         url = f"https://newsapi.org/v2/everything?q={keywords}&language=en&sortBy=publishedAt&pageSize=20&apiKey={NEWS_API_KEY}"
@@ -157,7 +157,7 @@ def fetch_news():
         data = response.json()
 
         if data.get("status") != "ok":
-            print(f" NewsAPI error: {data.get('message')}")
+            print(f"⚠️ NewsAPI error: {data.get('message')}")
             return []
 
         articles = data.get("articles", [])
@@ -190,14 +190,14 @@ def fetch_news():
 
         conn.commit()
         conn.close()
-        print(f" Saved {saved} news articles")
+        print(f"✅ Saved {saved} news articles")
         return articles
 
     except Exception as e:
-        print(f" News fetch error: {e}")
+        print(f"❌ News fetch error: {e}")
         return []
 
-#SENTIMENT ANALYSIS
+# ─── SENTIMENT ANALYSIS (rule-based) ──────────────────────
 def analyze_sentiment(text):
     text = text.lower()
     positive_words = ["surge", "rally", "gain", "rise", "bull", "high", "profit", "boost", "strong", "record", "growth", "up"]
@@ -212,14 +212,14 @@ def analyze_sentiment(text):
         return "negative"
     return "neutral"
 
-# KEYWORD EXTRACTOR 
+# ─── KEYWORD EXTRACTOR ────────────────────────────────────
 def extract_keywords(text):
     important = ["RBI", "rate", "inflation", "GDP", "budget", "FII", "DII", "rupee", "dollar",
                  "earnings", "war", "election", "policy", "Fed", "China", "oil", "recession"]
     found = [k for k in important if k.lower() in text.lower()]
     return ", ".join(found)
 
-# PATTERN DETECTION 
+# ─── PATTERN DETECTION ────────────────────────────────────
 def detect_patterns(df):
     patterns = []
     if df is None or len(df) < 10:
@@ -451,14 +451,8 @@ def run_full_analysis():
     conn.close()
     print("✅ Full analysis complete")
 
-# ─── FETCH OPTION CHAIN FROM NSE (using Selenium) ────────
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-
 def fetch_option_chain():
-    print(" Fetching NSE Option Chain using Chrome...")
+    print("📊 Fetching NSE Option Chain using Chrome...")
     driver = None
     try:
         # Setup headless Chrome
@@ -477,12 +471,12 @@ def fetch_option_chain():
         )
 
         # Step 1: Visit NSE homepage to get cookies
-        print(" Visiting NSE homepage...")
+        print("🌐 Visiting NSE homepage...")
         driver.get("https://www.nseindia.com")
         time.sleep(3)
 
         # Step 2: Visit option chain page
-        print(" Visiting option chain page...")
+        print("🌐 Visiting option chain page...")
         driver.get("https://www.nseindia.com/option-chain")
         time.sleep(3)
 
@@ -502,7 +496,7 @@ def fetch_option_chain():
         for cookie in cookies:
             session.cookies.set(cookie['name'], cookie['value'])
 
-        print(f" Got {len(cookies)} cookies from NSE")
+        print(f"🍪 Got {len(cookies)} cookies from NSE")
 
         # Step 4: Fetch option chain data
         url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
@@ -510,7 +504,7 @@ def fetch_option_chain():
         print(f"📡 NSE response status: {response.status_code}")
 
         if response.status_code != 200:
-            print(f" NSE returned status {response.status_code}")
+            print(f"⚠️ NSE returned status {response.status_code}")
             return None
 
         data = response.json()
@@ -520,7 +514,7 @@ def fetch_option_chain():
         underlying_value = records.get("underlyingValue", 0)
 
         if not option_data:
-            print(" No option chain data returned")
+            print("⚠️ No option chain data returned")
             return None
 
         # Use nearest expiry
@@ -568,11 +562,11 @@ def fetch_option_chain():
 
         conn.commit()
         conn.close()
-        print(f"Saved {saved} option chain strikes")
+        print(f"✅ Saved {saved} option chain strikes")
         return { "underlying": underlying_value, "atm": atm_strike, "expiry": nearest_expiry, "saved": saved }
 
     except Exception as e:
-        print(f" Option chain fetch error: {e}")
+        print(f"❌ Option chain fetch error: {e}")
         if driver:
             try:
                 driver.quit()
@@ -723,5 +717,4 @@ if __name__ == '__main__':
     start_scheduler()
     run_full_analysis()
     fetch_option_chain()  # Fetch option chain on startup
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
-    
+    app.run(debug=True, port=5000)
