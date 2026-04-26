@@ -7,6 +7,126 @@ import {
 // ── API BASE URL ─────────────────────────────────────────────────────────────
 const API = "https://nifty-analyzer.onrender.com/api";
 
+// ── AUTH HELPERS ─────────────────────────────────────────────────────────────
+const getToken = () => localStorage.getItem("nifty_token");
+const getUser = () => { try { return JSON.parse(localStorage.getItem("nifty_user")); } catch { return null; } };
+const setAuth = (token, user) => { localStorage.setItem("nifty_token", token); localStorage.setItem("nifty_user", JSON.stringify(user)); };
+const clearAuth = () => { localStorage.removeItem("nifty_token"); localStorage.removeItem("nifty_user"); };
+const authFetch = (url, opts = {}) => fetch(url, { ...opts, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getToken()}`, ...(opts.headers || {}) } });
+
+// ── AUTH SCREENS ─────────────────────────────────────────────────────────────
+function AuthScreen({ onLogin, T, darkMode, setDarkMode }) {
+  const [mode, setMode] = useState("login"); // login | signup | welcome
+  const [form, setForm] = useState({ name:"", email:"", password:"" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [newUser, setNewUser] = useState(null);
+
+  const handle = async () => {
+    setError(""); setLoading(true);
+    try {
+      const endpoint = mode === "login" ? "/auth/login" : "/auth/signup";
+      const body = mode === "login" ? { email: form.email, password: form.password } : form;
+      const res = await fetch(`${API}${endpoint}`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Something went wrong"); setLoading(false); return; }
+      setAuth(data.token, data.user);
+      if (mode === "signup") { setNewUser(data.user); setMode("welcome"); }
+      else { onLogin(data.user); }
+    } catch (e) { setError("Connection error. Try again."); }
+    setLoading(false);
+  };
+
+  if (mode === "welcome") return (
+    <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:20, padding:"40px", maxWidth:480, width:"90%", textAlign:"center" }}>
+        <div style={{ fontSize:48, marginBottom:16 }}>🎉</div>
+        <div style={{ fontFamily:"Syne", fontWeight:800, fontSize:24, color:T.text, marginBottom:8 }}>Welcome, {newUser?.name}!</div>
+        <div style={{ fontFamily:"JetBrains Mono", fontSize:13, color:T.muted, marginBottom:32 }}>Your account is ready. What would you like to explore?</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+          <div onClick={() => onLogin({...newUser, preference:"stocks"})} style={{ background:T.accent+"18", border:`2px solid ${T.accent}`, borderRadius:14, padding:"24px 16px", cursor:"pointer" }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>📈</div>
+            <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:14, color:T.accent }}>Stocks & Index</div>
+            <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginTop:4 }}>Nifty charts, patterns, news</div>
+          </div>
+          <div onClick={() => onLogin({...newUser, preference:"options"})} style={{ background:T.accent3+"18", border:`2px solid ${T.accent3}`, borderRadius:14, padding:"24px 16px", cursor:"pointer" }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>📊</div>
+            <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:14, color:T.accent3 }}>Option Chain</div>
+            <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginTop:4 }}>CE/PE data, PCR, Max Pain</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap'); * { box-sizing:border-box; margin:0; padding:0; }`}</style>
+      <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:20, padding:"40px", maxWidth:420, width:"90%" }}>
+        {/* Logo */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:32 }}>
+          <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg, ${T.accent}, ${T.accent3})`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <span style={{ fontSize:18 }}>📊</span>
+          </div>
+          <div>
+            <div style={{ fontFamily:"Syne", fontWeight:800, fontSize:16, color:T.text }}>NIFTY ANALYZER</div>
+            <div style={{ fontFamily:"JetBrains Mono", fontSize:10, color:T.muted }}>by Shivam Sharma</div>
+          </div>
+          <button onClick={() => setDarkMode(d=>!d)} style={{ marginLeft:"auto", background:"none", border:`1px solid ${T.border}`, borderRadius:8, padding:"4px 10px", color:T.muted, fontFamily:"JetBrains Mono", fontSize:11, cursor:"pointer" }}>
+            {darkMode ? "☀" : "🌙"}
+          </button>
+        </div>
+
+        <div style={{ fontFamily:"Syne", fontWeight:800, fontSize:22, color:T.text, marginBottom:4 }}>
+          {mode === "login" ? "Welcome back!" : "Create account"}
+        </div>
+        <div style={{ fontFamily:"JetBrains Mono", fontSize:12, color:T.muted, marginBottom:28 }}>
+          {mode === "login" ? "Sign in to access your dashboard" : "Join to start analyzing markets"}
+        </div>
+
+        {error && <div style={{ background:T.down+"22", border:`1px solid ${T.down}44`, borderRadius:8, padding:"10px 14px", fontFamily:"JetBrains Mono", fontSize:12, color:T.down, marginBottom:16 }}>{error}</div>}
+
+        {mode === "signup" && (
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, letterSpacing:1 }}>YOUR NAME</div>
+            <input value={form.name} onChange={e => setForm({...form, name:e.target.value})}
+              placeholder="Shivam Sharma"
+              style={{ width:"100%", background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, padding:"12px 16px", fontFamily:"JetBrains Mono", fontSize:13, color:T.text, outline:"none" }}/>
+          </div>
+        )}
+
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, letterSpacing:1 }}>EMAIL</div>
+          <input value={form.email} onChange={e => setForm({...form, email:e.target.value})}
+            placeholder="you@email.com" type="email"
+            style={{ width:"100%", background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, padding:"12px 16px", fontFamily:"JetBrains Mono", fontSize:13, color:T.text, outline:"none" }}/>
+        </div>
+
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted, marginBottom:6, letterSpacing:1 }}>PASSWORD</div>
+          <input value={form.password} onChange={e => setForm({...form, password:e.target.value})}
+            placeholder="••••••••" type="password"
+            onKeyDown={e => e.key === "Enter" && handle()}
+            style={{ width:"100%", background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, padding:"12px 16px", fontFamily:"JetBrains Mono", fontSize:13, color:T.text, outline:"none" }}/>
+        </div>
+
+        <button onClick={handle} disabled={loading}
+          style={{ width:"100%", background:`linear-gradient(135deg, ${T.accent}, ${T.accent3})`, border:"none", borderRadius:10, padding:"14px", fontFamily:"Syne", fontWeight:700, fontSize:15, color:"#fff", cursor:"pointer", opacity: loading ? 0.7 : 1 }}>
+          {loading ? "Please wait..." : mode === "login" ? "Sign In →" : "Create Account →"}
+        </button>
+
+        <div style={{ textAlign:"center", marginTop:20, fontFamily:"JetBrains Mono", fontSize:12, color:T.muted }}>
+          {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+          <span onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
+            style={{ color:T.accent, cursor:"pointer", fontWeight:600 }}>
+            {mode === "login" ? "Sign up" : "Sign in"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── STYLES ──────────────────────────────────────────────────────────────────
 const FONTS = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -95,6 +215,19 @@ const CustomTooltip = ({ active, payload, label, theme }) => {
 // ── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function NiftyAnalyzer() {
   const [darkMode, setDarkMode] = useState(true);
+  const [user, setUser] = useState(getUser());
+  const T = darkMode ? DARK : LIGHT;
+
+  const handleLogin = (userData) => setUser(userData);
+  const handleLogout = () => { clearAuth(); setUser(null); };
+
+  if (!user || !getToken()) return <AuthScreen onLogin={handleLogin} T={T} darkMode={darkMode} setDarkMode={setDarkMode}/>;
+
+  return <Dashboard user={user} onLogout={handleLogout} darkMode={darkMode} setDarkMode={setDarkMode} T={T}/>;
+}
+
+function Dashboard({ user, onLogout, darkMode, setDarkMode, T }) {
+  const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [marketData, setMarketData] = useState([]);
   const [news, setNews] = useState([]);
@@ -113,12 +246,12 @@ export default function NiftyAnalyzer() {
     try {
       const today = new Date().toISOString().split("T")[0];
       const [marketRes, newsRes, patternsRes, eventsRes, summaryRes, ocRes] = await Promise.all([
-        fetch(`${API}/market?date=${today}`),
-        fetch(`${API}/news`),
-        fetch(`${API}/patterns?date=${today}`),
-        fetch(`${API}/events?date=${today}`),
-        fetch(`${API}/summary/today`),
-        fetch(`${API}/optionchain`),
+        authFetch(`${API}/market?date=${today}`),
+        authFetch(`${API}/news`),
+        authFetch(`${API}/patterns?date=${today}`),
+        authFetch(`${API}/events?date=${today}`),
+        authFetch(`${API}/summary/today`),
+        authFetch(`${API}/optionchain`),
       ]);
       const [marketJson, newsJson, patternsJson, eventsJson, summaryJson, ocJson] = await Promise.all([
         marketRes.json(), newsRes.json(), patternsRes.json(), eventsRes.json(), summaryRes.json(), ocRes.json()
@@ -231,6 +364,10 @@ export default function NiftyAnalyzer() {
               <button className="toggle-btn" onClick={() => setDarkMode(d => !d)}>
                 {darkMode ? "☀ Light" : "🌙 Dark"}
               </button>
+              <div style={{ display:"flex", alignItems:"center", gap:8, background:T.card, border:`1px solid ${T.border}`, borderRadius:100, padding:"4px 14px" }}>
+                <span style={{ fontFamily:"Syne", fontWeight:700, fontSize:12, color:T.text }}>👤 {user?.name}</span>
+                <span onClick={onLogout} style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.down, cursor:"pointer", marginLeft:6 }}>Logout</span>
+              </div>
             </div>
           </div>
 
@@ -655,12 +792,82 @@ export default function NiftyAnalyzer() {
               </div>
 
               {/* Option Chain Table */}
-              </div>
+              {optionChain.data.length === 0 ? (
+                <div className="card" style={{ textAlign:"center", padding:60 }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>📊</div>
+                  <div style={{ fontFamily:"Syne", fontWeight:700, fontSize:16, marginBottom:8 }}>No Option Chain Data Yet</div>
+                  <div style={{ fontFamily:"JetBrains Mono", fontSize:12, color:T.muted, marginBottom:20 }}>
+                    Option chain is fetched from NSE during market hours (9:15 AM – 3:30 PM)
+                  </div>
+                  <button onClick={async () => {
+                    setOcLoading(true);
+                    await fetch(`${API}/optionchain/refresh`, { method:"POST" });
+                    await fetchAllData();
+                    setOcLoading(false);
+                  }} style={{ background:T.accent, color:"#000", border:"none", borderRadius:8, padding:"10px 24px", fontFamily:"Syne", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    {ocLoading ? "Fetching..." : "🔄 Fetch Now"}
+                  </button>
+                </div>
+              ) : (
+                <div className="card" style={{ padding:0, overflow:"hidden" }}>
+                  <div style={{ overflowX:"auto" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontFamily:"JetBrains Mono", fontSize:12 }}>
+                      <thead>
+                        <tr style={{ background:T.surface }}>
+                          {/* CE Headers */}
+                          {["OI","Chng OI","Volume","IV","LTP"].map(h => (
+                            <th key={h} style={{ padding:"12px 10px", color:T.up, fontWeight:600, textAlign:"right", borderBottom:`1px solid ${T.border}`, whiteSpace:"nowrap", fontSize:11 }}>{h}</th>
+                          ))}
+                          {/* Strike */}
+                          <th style={{ padding:"12px 16px", color:T.warn, fontWeight:700, textAlign:"center", borderBottom:`1px solid ${T.border}`, background:T.card, fontSize:12, letterSpacing:1 }}>STRIKE</th>
+                          {/* PE Headers */}
+                          {["LTP","IV","Volume","Chng OI","OI"].map(h => (
+                            <th key={h} style={{ padding:"12px 10px", color:T.down, fontWeight:600, textAlign:"left", borderBottom:`1px solid ${T.border}`, whiteSpace:"nowrap", fontSize:11 }}>{h}</th>
+                          ))}
+                        </tr>
+                        <tr style={{ background:T.surface }}>
+                          <td colSpan={5} style={{ padding:"6px 10px", textAlign:"center", color:T.up, fontFamily:"Syne", fontWeight:700, fontSize:11, letterSpacing:2, borderBottom:`2px solid ${T.up}44` }}>── CALL OPTIONS (CE) ──</td>
+                          <td style={{ background:T.card, borderBottom:`2px solid ${T.warn}44` }}/>
+                          <td colSpan={5} style={{ padding:"6px 10px", textAlign:"center", color:T.down, fontFamily:"Syne", fontWeight:700, fontSize:11, letterSpacing:2, borderBottom:`2px solid ${T.down}44` }}>── PUT OPTIONS (PE) ──</td>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {optionChain.data.map((row, i) => {
+                          const isAtm = row.atm === 1;
+                          const isMaxPain = row.strike === optionChain.max_pain;
+                          const rowBg = isAtm ? T.warn + "18" : isMaxPain ? T.accent2 + "12" : i % 2 === 0 ? T.card : T.surface;
+                          const fmt = (v) => v ? Number(v).toLocaleString("en-IN") : "—";
+                          const fmtOi = (v) => v >= 1e7 ? (v/1e7).toFixed(2)+"Cr" : v >= 1e5 ? (v/1e5).toFixed(1)+"L" : fmt(v);
+                          return (
+                            <tr key={i} style={{ background:rowBg, transition:"background 0.2s" }}>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.up, opacity:0.9 }}>{fmtOi(row.ce_oi)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color: row.ce_chng_oi > 0 ? T.up : T.down }}>{fmtOi(row.ce_chng_oi)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.muted }}>{fmtOi(row.ce_volume)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.muted }}>{row.ce_iv ? row.ce_iv.toFixed(1)+"%" : "—"}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"right", color:T.up, fontWeight:600 }}>{fmt(row.ce_ltp)}</td>
+                              {/* Strike cell */}
+                              <td style={{ padding:"9px 16px", textAlign:"center", fontWeight:700, color: isAtm ? T.warn : T.text, background: isAtm ? T.warn+"22" : isMaxPain ? T.accent2+"22" : T.surface, borderLeft:`1px solid ${T.border}`, borderRight:`1px solid ${T.border}`, whiteSpace:"nowrap" }}>
+                                {row.strike.toLocaleString("en-IN")}
+                                {isAtm && <span style={{ display:"block", fontSize:9, color:T.warn, letterSpacing:1 }}>ATM</span>}
+                                {isMaxPain && <span style={{ display:"block", fontSize:9, color:T.accent2, letterSpacing:1 }}>MAX PAIN</span>}
+                              </td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.down, fontWeight:600 }}>{fmt(row.pe_ltp)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.muted }}>{row.pe_iv ? row.pe_iv.toFixed(1)+"%" : "—"}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.muted }}>{fmtOi(row.pe_volume)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color: row.pe_chng_oi > 0 ? T.up : T.down }}>{fmtOi(row.pe_chng_oi)}</td>
+                              <td style={{ padding:"9px 10px", textAlign:"left", color:T.down, opacity:0.9 }}>{fmtOi(row.pe_oi)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
-        </div>
 
-        {/* Footer */}
         <div style={{ borderTop:`1px solid ${T.border}`, padding:"16px 24px", textAlign:"center", marginTop:24 }}>
           <span style={{ fontFamily:"JetBrains Mono", fontSize:11, color:T.muted }}>
             NIFTY ANALYZER • Data refreshes every 5 min during market hours (09:15 – 15:30 IST) • {new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" })}
